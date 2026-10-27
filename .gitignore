@@ -1,0 +1,11 @@
+node_modules/
+
+# Dashboard event log (local run history)
+.pipeline/
+
+# Client work stays local: briefs hold names, phone numbers and WhatsApp messages.
+# Only the template is versioned.
+projects/*
+!projects/_template/
+projects/_template/reports/*
+!projects/_template/reports/.gitkeep

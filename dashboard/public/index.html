@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%237c6cff'/><circle cx='9' cy='16' r='3.5' fill='white'/><circle cx='23' cy='9' r='3.5' fill='white'/><circle cx='23' cy='23' r='3.5' fill='white'/><path d='M12 16h4m0 0 4-6m-4 6 4 6' stroke='white' stroke-width='2' fill='none'/></svg>">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Pipeline</span>
+    </div>
+    <div class="crumbs">
+      <span class="muted">Clients</span><span class="sep">/</span>
+      <strong id="crumb-client">—</strong>
+      <span id="run-pill" class="pill pill-idle">Idle</span>
+      <span id="run-meta" class="muted small"></span>
+    </div>
+    <div class="actions">
+      <button id="btn-check" class="btn" title="Run checks/check.js only (no AI, free)">
+        <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>
+        Run check
+      </button>
+      <button id="btn-run" class="btn btn-primary" title="Run /build-client with Claude Code">
+        <svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>
+        Run pipeline
+      </button>
+      <button id="btn-stop" class="btn btn-danger" hidden>
+        <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        Stop
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <span>Clients</span>
+        <button id="btn-new" class="icon-btn" title="New client from template" aria-label="New client">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <ul id="client-list" class="client-list"></ul>
+      <div id="client-empty" class="empty" hidden>
+        <p>No clients yet.</p>
+        <p class="muted small">Click <strong>+</strong> to copy <code>projects/_template</code>, then paste the WhatsApp brief into its <code>project.json</code>.</p>
+      </div>
+    </aside>
+
+    <main class="canvas-wrap" id="canvas-wrap">
+      <div id="past-banner" class="past-banner" hidden>
+        Viewing a past run · <button id="btn-live" class="link">Back to live</button>
+      </div>
+      <div class="canvas" id="canvas">
+        <svg class="edges" id="edges"></svg>
+        <div class="nodes" id="nodes"></div>
+      </div>
+      <div class="zoom">
+        <button class="icon-btn" data-zoom="in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button class="icon-btn" data-zoom="out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button class="icon-btn" data-zoom="fit" aria-label="Fit to view"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+      <div class="legend">
+        <span><i class="dot s-running"></i>Running</span>
+        <span><i class="dot s-success"></i>Passed</span>
+        <span><i class="dot s-fail"></i>Failed</span>
+        <span><i class="dot s-idle"></i>Waiting</span>
+      </div>
+    </main>
+
+    <aside class="panel">
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="live" role="tab">Live log</button>
+        <button class="tab" data-tab="step" role="tab">Step</button>
+        <button class="tab" data-tab="runs" role="tab">Runs</button>
+      </nav>
+      <section class="tab-body" data-body="live">
+        <ol id="log" class="log"></ol>
+        <div id="log-empty" class="empty">
+          <p>Nothing running.</p>
+          <p class="muted small">Start a run here, or type <code>/build-client &lt;client&gt;</code> in Claude Code inside <code>agency-pipeline</code>. It shows up live either way.</p>
+        </div>
+      </section>
+      <section class="tab-body" data-body="step" hidden>
+        <div id="step"></div>
+      </section>
+      <section class="tab-body" data-body="runs" hidden>
+        <ul id="runs" class="runs"></ul>
+      </section>
+    </aside>
+  </div>
+
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="icon-btn lb-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="lb-scroll"><img id="lb-img" alt=""></div>
+    <div id="lb-cap" class="lb-cap"></div>
+  </div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

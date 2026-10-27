@@ -1,0 +1,36 @@
+{
+  "client": "Client Name",
+  "slug": "client-name",
+  "niche": "dental",
+  "status": "intake",
+  "contact": { "name": "", "phone": "", "language": "en" },
+  "brief": {
+    "raw": "Paste the client's WhatsApp messages here, unedited.",
+    "summary": "One paragraph: who they are, who their customers are, what the site must do.",
+    "goals": ["e.g. get booking calls", "show services and prices"],
+    "audience": "",
+    "tone": ""
+  },
+  "brand": {
+    "colors": { "primary": "", "secondary": "", "accent": "", "background": "", "text": "" },
+    "fonts": { "heading": "", "body": "" },
+    "logo": "assets/logo.svg",
+    "notes": "Only values the client gave or that come from assets/. Leave blank otherwise."
+  },
+  "specs": {
+    "stack": "static",
+    "languages": ["en"],
+    "pages": [
+      { "path": "/", "name": "Home", "sections": ["hero", "services", "about", "testimonials", "contact"] }
+    ],
+    "contact": { "phone": "", "whatsapp": "", "email": "", "address": "", "map": false },
+    "must_have": [],
+    "avoid": []
+  },
+  "assets": [
+    { "file": "assets/logo.svg", "what": "Main logo" }
+  ],
+  "open_questions": [],
+  "bugs": [],
+  "history": []
+}
