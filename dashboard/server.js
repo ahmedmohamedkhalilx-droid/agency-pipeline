@@ -82,11 +82,27 @@ function finishRun(run, t, how) {
   if (active[run.client] === run) delete active[run.client];
 }
 
+function finishAgent(run, node, e, t) {
+  let status = e.failed ? 'fail' : 'success';
+  let detail = run.nodes[node].detail === 'Working in the background' ? '' : run.nodes[node].detail;
+  if (node === 'review' && e.result) { status = e.result === 'PASS' ? 'success' : 'fail'; detail = `${e.result}${e.score ? ' · ' + e.score : ''}`; }
+  if (node === 'research' && /already exists/i.test(e.text || '')) { status = 'skipped'; detail = 'Cached niche file'; }
+  setNode(run, node, status, detail, t);
+  run.nodes[node].report = e.text;
+  const name = e.agent || Object.keys(AGENT_NODE).find((k) => AGENT_NODE[k] === node);
+  addLog(run, t, status === 'fail' ? 'error' : 'ok', `${name} ${status === 'fail' ? 'failed' : 'finished'}${detail ? ' · ' + detail : ''}`, node);
+}
+
 const isCheckCmd = (cmd) => /checks[\\/]+check\.js/.test(cmd || '');
 
 function apply(e) {
   if (e.client && e.session) sessionClient[e.session] = e.client;
-  const client = e.client || (e.session && sessionClient[e.session]);
+  let client = e.client || (e.session && sessionClient[e.session]);
+  // A background agent's stop event is matched by its agent id, whatever session sent it.
+  if (e.ev === 'SubagentStop' && e.agentId) {
+    const owner = Object.values(active).find((r) => r.async && r.async[e.agentId]);
+    if (owner) client = owner.client;
+  }
   if (!client) return null;
   const t = e.t || Date.now();
   let run = active[client];
@@ -130,16 +146,18 @@ function apply(e) {
     }
     setNode(run, agentNode, 'running', detail, t);
     addLog(run, t, 'step', `${e.agent} started${e.desc ? ': ' + e.desc : ''}`, agentNode);
+  } else if (agentNode && /^PostToolUse/.test(e.ev) && e.async) {
+    // Launched in the background: it's still working. SubagentStop will finish it.
+    run.async = run.async || {};
+    if (e.agentId) run.async[e.agentId] = agentNode;
+    run.nodes[agentNode].detail = 'Working in the background';
+    addLog(run, t, 'step', `${e.agent} is working in the background`, agentNode);
+  } else if (e.ev === 'SubagentStop' && run.async && run.async[e.agentId]) {
+    const node = run.async[e.agentId];
+    delete run.async[e.agentId];
+    finishAgent(run, node, e, t);
   } else if (agentNode && /^PostToolUse/.test(e.ev)) {
-    let status = e.failed ? 'fail' : 'success';
-    let detail = run.nodes[agentNode].detail;
-    if (agentNode === 'review' && e.result) { status = e.result === 'PASS' ? 'success' : 'fail'; detail = `${e.result}${e.score ? ' · ' + e.score : ''}`; }
-    if (agentNode === 'research' && /already exists/i.test(e.text || '')) { status = 'skipped'; detail = 'Cached niche file'; }
-    setNode(run, agentNode, status, detail, t);
-    if (agentNode === 'review') run.nodes.review.report = e.text;
-    if (agentNode === 'build') run.nodes.build.report = e.text;
-    if (agentNode === 'research') run.nodes.research.report = e.text;
-    addLog(run, t, status === 'fail' ? 'error' : 'ok', `${e.agent} ${status === 'fail' ? 'failed' : 'finished'}${detail ? ' · ' + detail : ''}`, agentNode);
+    finishAgent(run, agentNode, e, t);
   }
 
   // ---- check.js ----
@@ -172,7 +190,11 @@ function apply(e) {
   else if (e.ev === 'Log') addLog(run, t, e.kind || 'out', e.text, e.node);
 
   // ---- end ----
-  else if (e.ev === 'Stop' && run.session && e.session === run.session && run.mode !== 'check') finishRun(run, t, 'done');
+  // A turn can end while background agents still work; the run isn't over until they stop.
+  else if (e.ev === 'Stop' && run.session && e.session === run.session && run.mode !== 'check') {
+    if (run.async && Object.keys(run.async).length) addLog(run, t, 'system', 'Waiting for background agents to finish');
+    else finishRun(run, t, 'done');
+  }
   else if (e.ev === 'RunEnd') {
     if (e.text) addLog(run, t, e.how === 'error' ? 'error' : 'system', e.text);
     finishRun(run, t, e.how || 'done');
@@ -292,7 +314,7 @@ function findClaude() {
 
 const ALLOWED_TOOLS = [
   'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'Agent', 'WebSearch', 'WebFetch',
-  'Bash(node checks/check.js:*)', 'Bash(npm run build:*)',
+  'Bash(node checks/check.js:*)', 'PowerShell(node checks/check.js:*)', 'Bash(npm run build:*)',
 ].join(',');
 
 function lineStream(stream, onLine) {
@@ -333,7 +355,12 @@ function startRun(slug, mode) {
   } else {
     const args = ['-p', `/build-client ${slug}`, '--output-format', 'stream-json', '--verbose',
       '--permission-mode', 'acceptEdits', '--allowedTools', ALLOWED_TOOLS];
-    child = spawn(findClaude(), args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    // If this server was started from inside a Claude app session it inherits that
+    // session's CLAUDE_* variables, which tell the CLI to wait for the app's login.
+    // Drop them so the CLI uses its own saved sign-in.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE|ANTHROPIC_BASE_URL$)/i.test(k)));
+    if (process.env.CLAUDE_BIN) env.CLAUDE_BIN = process.env.CLAUDE_BIN;
+    child = spawn(findClaude(), args, { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
     lineStream(child.stdout, (l) => {
       let m;
       try { m = JSON.parse(l); } catch { return onErr(l); }

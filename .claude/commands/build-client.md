@@ -5,6 +5,13 @@ argument-hint: <client-folder-name>
 
 Run the agency pipeline for `projects/$ARGUMENTS`. Follow `CLAUDE.md` throughout.
 
+**Run every agent in the foreground and wait for its result.** Never launch an agent in
+the background: each step needs the previous step's output, and in a one-shot run
+(`claude -p`) background agents are cut off when your turn ends.
+
+Run the check as exactly `node checks/check.js projects/$ARGUMENTS`, with nothing
+chained before or after it (no `cd`, `;`, `echo`). It prints PASS/FAIL itself.
+
 ## 0. Preflight
 - Confirm `projects/$ARGUMENTS/project.json` exists. If not, stop and say so (intake
   hasn't been done; copy `projects/_template/`).
