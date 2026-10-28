@@ -40,11 +40,11 @@ const active = {}; // client -> run
 const sessionClient = {};
 let runSeq = 0;
 
-function newRun(client, mode, session) {
+function newRun(client, mode, session, t = Date.now()) {
   const run = {
     id: `${Date.now().toString(36)}-${++runSeq}`,
     client, mode, session: session || null,
-    status: 'running', startedAt: Date.now(), endedAt: null, lastAt: Date.now(),
+    status: 'running', startedAt: t, endedAt: null, lastAt: t,
     rounds: 0, maxRounds: MAX_ROUNDS,
     nodes: Object.fromEntries(NODES.map((n) => [n, { status: 'idle', detail: '', startedAt: null, endedAt: null, runs: 0 }])),
     files: [], log: [],
@@ -110,7 +110,7 @@ function apply(e) {
   // ---- run start ----
   if (e.ev === 'RunStart') {
     if (run) finishRun(run, t, 'stopped');
-    run = newRun(client, e.mode, null);
+    run = newRun(client, e.mode, null, t);
     setNode(run, 'trigger', 'success', e.mode === 'check' ? 'Check only' : 'Started from dashboard', t);
     addLog(run, t, 'system', e.mode === 'check' ? 'Check started' : `Pipeline started: /build-client ${client}`, 'trigger');
     return run;
@@ -119,7 +119,7 @@ function apply(e) {
     // A run the dashboard spawned announces its session here: attach, don't duplicate.
     if (run && !run.session && run.mode === 'pipeline' && t - run.startedAt < 60000) { run.session = e.session; return run; }
     if (run) finishRun(run, t, 'stopped');
-    run = newRun(client, 'pipeline', e.session);
+    run = newRun(client, 'pipeline', e.session, t);
     setNode(run, 'trigger', 'success', 'Started from Claude Code', t);
     addLog(run, t, 'system', `Pipeline started: /build-client ${client}`, 'trigger');
     return run;
@@ -131,7 +131,7 @@ function apply(e) {
   if (!run) {
     if (!pipelineish) return null;
     // Pipeline steps run by hand (e.g. "use the builder on acme") still get a run.
-    run = newRun(client, 'manual', e.session);
+    run = newRun(client, 'manual', e.session, t);
     setNode(run, 'trigger', 'success', 'Started by hand', t);
   }
   run.lastAt = t;
@@ -418,6 +418,52 @@ function createProject(name) {
   return slug;
 }
 
+// ---------- client site previews ----------
+// Each client's site gets its own local server so root-relative links
+// (/styles.css, /about) work exactly as they will when deployed.
+const SITE_MIME = {
+  '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript',
+  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.ico': 'image/x-icon',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf', '.pdf': 'application/pdf',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.txt': 'text/plain', '.xml': 'application/xml',
+};
+const siteServers = {};
+
+function siteRoot(slug) {
+  const dir = path.join(PROJECTS, slug, 'site');
+  for (const sub of ['', 'out', 'dist', 'build', '_site']) {
+    if (fs.existsSync(path.join(dir, sub, 'index.html'))) return path.join(dir, sub);
+  }
+  return null;
+}
+
+function siteUrl(slug) {
+  if (siteServers[slug]) return Promise.resolve(siteServers[slug]);
+  const root = siteRoot(slug);
+  if (!root) throw new Error(`projects/${slug}/site has no index.html yet. Run the pipeline first.`);
+  const srv = http.createServer((req, res) => {
+    // Resolve the root on every request so a rebuild into out/ or dist/ is picked up.
+    const base = siteRoot(slug) || root;
+    const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    for (const c of [p, p + '.html', path.posix.join(p, 'index.html')]) {
+      const file = path.join(base, c);
+      if (!file.startsWith(base)) break;
+      if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+        res.writeHead(200, { 'Content-Type': SITE_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+        return fs.createReadStream(file).pipe(res);
+      }
+    }
+    const nf = path.join(base, '404.html');
+    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.existsSync(nf) ? fs.readFileSync(nf) : 'Not found');
+  });
+  return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => {
+    siteServers[slug] = `http://localhost:${srv.address().port}/`;
+    resolve(siteServers[slug]);
+  }));
+}
+
 // ---------- http ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
@@ -466,6 +512,9 @@ const server = http.createServer(async (req, res) => {
       if (m[1] === 'run') startRun(m[2], mode === 'check' ? 'check' : 'pipeline');
       else stopRun(m[2]);
       return send(res, 200, { ok: true });
+    }
+    if ((m = p.match(/^\/api\/site\/([\w.-]+)$/))) {
+      return send(res, 200, { url: await siteUrl(m[1]) });
     }
     if ((m = p.match(/^\/shots\/([\w.-]+)\/([\w.-]+\.png)$/))) {
       const file = path.join(PROJECTS, m[1], 'reports', m[2]);

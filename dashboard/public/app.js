@@ -269,6 +269,8 @@ function renderTop() {
   const running = liveRun()?.status === 'running';
   $('#btn-run').disabled = !p || running;
   $('#btn-check').disabled = !p || running;
+  $('#btn-site').disabled = !p || !p.hasSite;
+  $('#btn-site').title = p && !p.hasSite ? 'No site built yet' : "Open this client's built website in a new tab";
   $('#btn-stop').hidden = !running;
   $('#past-banner').hidden = !S.viewRunId;
 }
@@ -433,6 +435,14 @@ $('#btn-run').addEventListener('click', () => {
   if (confirm(`Run /build-client ${S.client} with Claude Code?\n\nIt can edit files in projects/${S.client}/ and run check.js. This uses your Claude plan.`)) start('pipeline');
 });
 $('#btn-check').addEventListener('click', () => start('check'));
+$('#btn-site').addEventListener('click', async () => {
+  // Open the tab first (synchronously) so pop-up blockers allow it, then point it at the site.
+  const tab = window.open('about:blank', '_blank');
+  try {
+    const { url } = await api(`/api/site/${encodeURIComponent(S.client)}`);
+    if (tab) tab.location = url; else location.href = url;
+  } catch (err) { if (tab) tab.close(); toast(err.message); }
+});
 $('#btn-stop').addEventListener('click', async () => {
   try { await api(`/api/stop/${encodeURIComponent(S.client)}`, { method: 'POST' }); } catch (err) { toast(err.message); }
 });

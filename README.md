@@ -36,8 +36,12 @@ npx playwright install chromium
 ## Dashboard
 
 ```bash
-npm run dashboard   # http://localhost:4321
+node dashboard/server.js   # http://localhost:4321
 ```
+
+(`npm run dashboard` does the same, but Windows PowerShell blocks `npm` when script
+execution is disabled; `node` always works.) Keep that terminal open: the dashboard
+stops when it closes. **Open site** previews the selected client's built website.
 
 Runs show up live whether they're started from the dashboard or from Claude Code, because
 the hooks in `.claude/settings.json` log every agent call, check run and file edit to
